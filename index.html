@@ -1156,8 +1156,11 @@ function buildRel(){
       const toMark=f.fa.filter(a=>sel.has(a.id)&&!f.pgIds.has(a.id));
       if(!toMark.length){toast('Selecione dias pendentes para pagar.',true);return;}
       if(!confirm('Marcar '+toMark.length+' dia(s) como pago para '+f.nome+'?'))return;
-      await FS.setPagamento({id:nid(),fId:f.id,aptIds:toMark.map(a=>a.id),valor:toMark.reduce((s,a)=>s+a.tot,0),data:today,pagoPor:S.user.id,created:new Date().toISOString()});
-      sel.clear();toast('Pagamento registrado!');
+      markPagoBtn.disabled=true;markPagoBtn.textContent='Salvando...';
+      try{
+        await FS.setPagamento({id:nid(),fId:f.id,aptIds:toMark.map(a=>a.id),valor:toMark.reduce((s,a)=>s+a.tot,0),data:today,pagoPor:S.user.id,created:new Date().toISOString()});
+        sel.clear();render();toast('Pagamento de '+toMark.length+' dia(s) registrado!');
+      }catch(e){toast('Erro: '+e.message,true);console.error(e);markPagoBtn.disabled=false;markPagoBtn.textContent='Marcar pago';}
     };
     const markPendBtn=el('button',{className:'btn btn-danger btn-sm'});markPendBtn.textContent='Reverter selecionados';
     markPendBtn.onclick=async()=>{
@@ -1169,16 +1172,16 @@ function buildRel(){
         if(!rest.length)await FS.delPagamento(pg.id);
         else await FS.setPagamento({...pg,aptIds:rest,valor:f.fa.filter(a=>rest.includes(a.id)).reduce((s,a)=>s+a.tot,0)});
       }
-      sel.clear();toast('Revertido.');
+      sel.clear();render();toast('Revertido.');
     };
     const pend=f.fa.filter(a=>!f.pgIds.has(a.id));
     const pagarTodosBtn=el('button',{className:'btn btn-ghost btn-sm'});pagarTodosBtn.textContent='Pagar todos ('+pend.length+')';pagarTodosBtn.disabled=!pend.length;
-    pagarTodosBtn.onclick=async()=>{if(!confirm('Pagar todos os '+pend.length+' dias pendentes?'))return;await FS.setPagamento({id:nid(),fId:f.id,aptIds:pend.map(a=>a.id),valor:pend.reduce((s,a)=>s+a.tot,0),data:today,pagoPor:S.user.id,created:new Date().toISOString()});toast('Pago!');};
+    pagarTodosBtn.onclick=async()=>{if(!confirm('Pagar todos os '+pend.length+' dias pendentes?'))return;await FS.setPagamento({id:nid(),fId:f.id,aptIds:pend.map(a=>a.id),valor:pend.reduce((s,a)=>s+a.tot,0),data:today,pagoPor:S.user.id,created:new Date().toISOString()});render();toast('Pago!');};
     btnRow.append(pdfBt,markPagoBtn,markPendBtn,pagarTodosBtn);chRight.append(btnRow);
     ch.append(chLeft,chRight);
     const tw=el('div',{className:'tbl-wrap'});const tbl=document.createElement('table');const thead=document.createElement('thead');const hr=document.createElement('tr');
     const thSel=document.createElement('th');const chkAll=el('input',{type:'checkbox'});chkAll.style.cssText='accent-color:var(--amber);width:14px;height:14px;';
-    chkAll.onchange=()=>{f.fa.forEach(a=>{if(chkAll.checked)sel.add(a.id);else sel.delete(a.id);});document.querySelectorAll('.ca_'+f.id).forEach(c=>{c.checked=chkAll.checked;});};
+    chkAll.onclick=()=>{f.fa.forEach(a=>{if(chkAll.checked)sel.add(a.id);else sel.delete(a.id);});document.querySelectorAll('.ca_'+f.id).forEach(c=>{c.checked=chkAll.checked;});};
     thSel.append(chkAll);hr.append(thSel);
     ['Data','Obra','Servicos','Diaria','Adicional','Total','Status'].forEach(h=>{const th=document.createElement('th');th.textContent=h;hr.append(th);});
     thead.append(hr);tbl.append(thead);const tbody=document.createElement('tbody');
@@ -1188,7 +1191,7 @@ function buildRel(){
       if(isPago){tr.style.cssText='background:rgba(249,115,22,.13);border-left:4px solid #f97316;opacity:0.95;';}
       else{tr.style.opacity='1';}
       const chkTd=document.createElement('td');const chk=document.createElement('input');chk.type='checkbox';chk.className='ca_'+f.id;chk.style.cssText='accent-color:var(--amber);width:14px;height:14px;cursor:pointer;';
-      chk.checked=sel.has(a.id);chk.onchange=()=>{if(chk.checked)sel.add(a.id);else sel.delete(a.id);};chkTd.append(chk);tr.append(chkTd);
+      chk.checked=sel.has(a.id);chk.onclick=()=>{if(chk.checked)sel.add(a.id);else sel.delete(a.id);};chkTd.append(chk);tr.append(chkTd);
       [[fmtD(a.data),'color:var(--amber);white-space:nowrap;'],[o?.nome||'-','color:var(--muted);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'],[a.sv,'color:var(--dim);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'],[fmt$(a.d),'white-space:nowrap;'],[a.t==='none'?'-':(a.t==='pct'?'+'+a.e+'%':'+'+fmt$(a.e)),'color:var(--orange);white-space:nowrap;'],[(a.meia?'1/2 ':'')+fmt$(a.tot),'color:var(--green);font-weight:600;white-space:nowrap;']].forEach(([v,s])=>{const td=document.createElement('td');td.style.cssText=s;td.textContent=v;tr.append(td);});
       const stTd=document.createElement('td');const bdg=el('span',{className:'bdg '+(isPago?'bdg-blue':'bdg-amber')});bdg.textContent=isPago?'Pago':'Pendente';stTd.append(bdg);tr.append(stTd);
       tbody.append(tr);
@@ -1455,6 +1458,9 @@ service cloud.firestore {
       match /obras/{docId}    { allow read, write: if true; }
       match /apts/{docId}     { allow read, write: if true; }
       match /adiants/{docId}  { allow read, write: if true; }
+      match /msgs/{docId}        { allow read, write: if true; }
+      match /pagamentos/{docId}  { allow read, write: if true; }
+      match /servicos/{docId}    { allow read, write: if true; }
     }
 
     // Bloqueia qualquer outra coleção fora de companies
