@@ -1,13 +1,13 @@
 {
-  "name": "WorkDay - Gestão de Diaristas",
-  "short_name": "WorkDay",
-  "description": "Gestão de diaristas e apontamentos para construção civil",
-  "start_url": "./workday.html",
+  "name": "Movix — Sua Equipe em Movimento",
+  "short_name": "Movix",
+  "description": "Sua equipe em movimento. Seu negócio no controle.",
+  "start_url": "./movix.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#0d1117",
-  "theme_color": "#f59e0b",
+  "theme_color": "#7acc00",
   "lang": "pt-BR",
   "icons": [
     {
