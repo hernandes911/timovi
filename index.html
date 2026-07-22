@@ -44,6 +44,7 @@ th{padding:9px 12px;text-align:left;font-size:11.5px;font-weight:600;letter-spac
 td{padding:9px 12px;font-size:13px;}
 tbody tr{border-bottom:1px solid var(--border);transition:background .1s;}
 tbody tr:hover{background:#161f30;}
+tbody tr:hover td{color:#fff!important;}
 .card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;}
 input,select,textarea,button{font-family:'DM Sans',sans-serif;}
 .field{display:flex;flex-direction:column;gap:4px;}
@@ -111,6 +112,7 @@ input,select,textarea,button{font-family:'DM Sans',sans-serif;}
 .logo-big{width:52px;height:52px;background:var(--amber);border-radius:12px;display:inline-flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:10px;}
 .company-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:space-between;}
 .company-card:hover{border-color:var(--amber);background:#161f30;}
+.company-card:hover *{color:#fff!important;}
 .code-box{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px 16px;}
 .code-val{font-family:monospace;font-size:18px;letter-spacing:.15em;color:var(--amber);font-weight:600;}
 .page-hdr{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:18px;}
@@ -938,6 +940,15 @@ function buildClientes(role){
     grid.append(card);
   });
   if(!cs.length){const e=el('div',{className:'card'});e.innerHTML='<p style="color:var(--dim);text-align:center;padding:30px;">Nenhum cliente.</p>';grid.append(e);}
+  const orfas=S.obras.filter(o=>!o.clienteId);
+  if(role==='master'&&orfas.length){
+    const cleanBanner=el('div',{className:'card',style:'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-left:4px solid var(--red);'});
+    cleanBanner.innerHTML='<span style="font-size:13px;color:var(--muted);">⚠️ Existem <b style="color:var(--text);">'+orfas.length+'</b> obra(s) antiga(s) sem cliente vinculado (de antes da criação de Clientes).</span>';
+    const cleanBtn=el('button',{className:'btn btn-danger btn-sm'});cleanBtn.textContent='🗑️ Limpar '+orfas.length+' obra(s)';
+    cleanBtn.onclick=async()=>{if(!confirm('Excluir permanentemente '+orfas.length+' obra(s) antiga(s) que não têm cliente vinculado? Essa ação não pode ser desfeita.'))return;for(const o of orfas){await FS.delObra(o.id);}toast(orfas.length+' obra(s) removida(s).');};
+    cleanBanner.append(cleanBtn);
+    div.append(hdr,cleanBanner,srchC,filtRow,grid);return div;
+  }
   div.append(hdr,srchC,filtRow,grid);return div;
 }
 
@@ -1054,11 +1065,20 @@ function buildApts(role){
   if(S.filtFunc)list=list.filter(a=>a.fId===S.filtFunc);
   if(S.filtObra)list=list.filter(a=>a.oId===S.filtObra);
   list=list.slice().sort((a,b)=>b.data.localeCompare(a.data));
-  const tot=list.reduce((s,a)=>s+a.tot,0);
-  const totRow=el('div',{style:'display:flex;gap:10px;'});
-  const t1=el('div',{className:'stat',style:'flex:1;'});t1.innerHTML='<p class="stat-lbl">Registros</p><div class="stat-val" style="color:var(--amber);">'+list.length+'</div>';
-  totRow.append(t1);
-  if(!hideValues){const t2=el('div',{className:'stat',style:'flex:1;'});t2.innerHTML='<p class="stat-lbl">Valor Total</p><div class="stat-val" style="color:var(--green);">'+fmt$(tot)+'</div>';totRow.append(t2);}
+  const isPago=a=>S.pagamentos.some(p=>p.fId===a.fId&&(p.aptIds||[]).includes(a.id));
+  let funcSummary=null;
+  if(S.filtFunc){
+    const fSel=S.funcs.find(x=>x.id===S.filtFunc);
+    const funcPendentes=S.apts.filter(a=>a.fId===S.filtFunc&&!isPago(a));
+    const valorPendente=funcPendentes.reduce((s,a)=>s+a.tot,0);
+    funcSummary=el('div',{className:'grid-auto'});
+    funcSummary.append(mkStat('📅','Diárias Pendentes',funcPendentes.length,fSel?.nome||'','amber'));
+    if(!hideValues)funcSummary.append(mkStat('💰','Valor Pendente',fmt$(valorPendente),fSel?.nome||'','green'));
+  }
+  if(!S.aptsStatusFilter)S.aptsStatusFilter='pendentes';
+  const statusFiltRow=el('div',{style:'display:flex;gap:6px;'});
+  [['pendentes','Pendentes'],['todos','Todos']].forEach(([f,lbl])=>{const b=el('button',{className:'btn btn-sm '+(S.aptsStatusFilter===f?'btn-amber':'btn-ghost')});b.textContent=lbl;b.onclick=()=>{S.aptsStatusFilter=f;render();};statusFiltRow.append(b);});
+  if(S.aptsStatusFilter==='pendentes')list=list.filter(a=>!isPago(a));
   const card=el('div',{className:'card',style:'padding:0;overflow:hidden;'});
   if(list.length){
     const tw=el('div',{className:'tbl-wrap'});
@@ -1093,7 +1113,9 @@ function buildApts(role){
     });
     tbl.append(tbody);tw.append(tbl);card.append(tw);
   } else{card.innerHTML='<p style="color:var(--dim);text-align:center;padding:24px;">Nenhum apontamento encontrado.</p>';}
-  div.append(hdr,filt,totRow,card);return div;
+  div.append(hdr,filt);
+  if(funcSummary)div.append(funcSummary);
+  div.append(statusFiltRow,card);return div;
 }
 
 // ===================== NOVO APONTAMENTO =====================
@@ -1131,7 +1153,7 @@ function buildAptVeiculoModal(){
   const box=el('div',{className:'modal-box'});const mh=el('div',{className:'modal-hdr'});const ht=el('span',{className:'hdr',style:'font-size:19px;'});ht.textContent=fd._new?'Novo Apontamento de Veículo':'Editar Apontamento de Veículo';const cl=el('button',{className:'modal-close'});cl.textContent='✕';cl.onclick=()=>{S.modal=null;S.formData={};render();};mh.append(ht,cl);
   const body=el('div',{className:'modal-body'});
   const veiculosAtivos=S.veiculos.filter(v=>v.ativo);
-  const vdiv=mkSelectField('Veículo *','av-veiculo',[['','Selecione...'],...veiculosAtivos.map(v=>[v.id,v.placa])],fd.veiculoId,()=>{},'',true);
+  const vdiv=mkSelectField('Veículo *','av-veiculo',[['','Selecione...'],...veiculosAtivos.map(v=>[v.id,v.placa])],fd.veiculoId,v=>{if(!fd.id){const veic=S.veiculos.find(x=>x.id===v);const kmInp=document.getElementById('av-km-saida');if(veic&&kmInp&&!kmInp.value)kmInp.value=veic.kmAtual||0;}},'',true);
   const funcsAtivos=S.funcs.filter(f=>f.ativo&&f.cargo!=='master');
   const fdiv=mkSelectField('Funcionário (quem pegou) *','av-func',[['','Selecione...'],...funcsAtivos.map(f=>[f.id,f.nome])],fd.funcId,()=>{},'',true);
   const clientesAtivos=S.clientes.filter(c=>c.ativo);
@@ -1200,7 +1222,7 @@ function buildAptVeiculoModal(){
     try{
       await FS.setUsoVeiculo(obj);
       const v=S.veiculos.find(x=>x.id===veiculoId);
-      if(v)await FS.setVeiculo({...v,kmAtual:kmParada!==null?kmParada:kmPartida});
+      if(v){const rodado=kmParada!==null?Math.max(0,kmParada-kmPartida):0;const novoKm=kmParada!==null?(v.kmAtual||0)+rodado:Math.max(v.kmAtual||0,kmPartida);await FS.setVeiculo({...v,kmAtual:novoKm});}
       S.modal=null;S.formData={};render();toast('Registro salvo!');
     }catch(e){toast('Erro ao salvar: '+e.message,true);sv.disabled=false;sv.textContent='Salvar';}
   };
@@ -1513,10 +1535,12 @@ function buildAdiant(role){
   list=list.slice().sort((a,b)=>b.data.localeCompare(a.data));
   list=list.slice().sort((a,b)=>b.data.localeCompare(a.data));
   const totAd=list.reduce((s,a)=>s+a.valor,0);
+  const totAberto=list.filter(a=>!a.quitado).reduce((s,a)=>s+a.valor,0);
   const totRow=el('div',{style:'display:flex;gap:10px;'});
   const t1=el('div',{className:'stat',style:'flex:1;'});t1.innerHTML=`<p class="stat-lbl">Lançamentos</p><div class="stat-val" style="color:var(--amber);">${list.length}</div>`;
   const t2=el('div',{className:'stat',style:'flex:1;'});t2.innerHTML=`<p class="stat-lbl">Total Adiantado</p><div class="stat-val" style="color:var(--red);">- ${fmt$(totAd)}</div>`;
-  totRow.append(t1,t2);
+  const t3=el('div',{className:'stat',style:'flex:1;'});t3.innerHTML=`<p class="stat-lbl">Em Aberto</p><div class="stat-val" style="color:var(--amber);">${fmt$(totAberto)}</div>`;
+  totRow.append(t1,t2,t3);
   let summaryCard=null;
   if(role==='master'&&list.length){
     const byFunc=[...new Set(list.map(a=>a.fId))].map(fid=>{const f=S.funcs.find(x=>x.id===fid);const fa=list.filter(a=>a.fId===fid);const bruto=S.apts.filter(a=>a.fId===fid&&a.data.startsWith(S.filtMes)).reduce((s,a)=>s+a.tot,0);const adT=fa.reduce((s,a)=>s+a.valor,0);return{f,count:fa.length,adT,bruto,liq:Math.max(0,bruto-adT)};});
@@ -1527,12 +1551,16 @@ function buildAdiant(role){
   const card=el('div',{className:'card',style:'padding:0;overflow:hidden;'});
   if(list.length){
     const tw=el('div',{className:'tbl-wrap'});const tbl=document.createElement('table');const thead=document.createElement('thead');const hr=document.createElement('tr');
-    const cols=['Data','Funcionário','Valor','Descrição','Registrado por'];if(canEdit)cols.push('Ações');
+    const cols=['Data','Funcionário','Valor','Descrição','Registrado por','Status'];if(canEdit)cols.push('Ações');
     cols.forEach(h=>{const th=document.createElement('th');th.textContent=h;hr.append(th);});thead.append(hr);tbl.append(thead);
     const tbody=document.createElement('tbody');
     list.forEach(a=>{
       const f=S.funcs.find(x=>x.id===a.fId);const reg=S.funcs.find(x=>x.id===a.regId);const tr=document.createElement('tr');
       [[fmtD(a.data),'color:var(--amber);white-space:nowrap;'],[f?.nome||'-','font-weight:500;white-space:nowrap;'],[fmt$(a.valor),'color:var(--red);font-weight:600;white-space:nowrap;'],[a.desc||'—','color:var(--dim);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'],[reg?.nome||'—','color:var(--muted);white-space:nowrap;']].forEach(([v,s])=>{const td=document.createElement('td');td.style.cssText=s;td.textContent=v;tr.append(td);});
+      const stTd=document.createElement('td');
+      if(canEdit){const stBtn=el('button',{className:'btn btn-sm '+(a.quitado?'btn-success':'btn-amber')});stBtn.textContent=a.quitado?'Quitado':'Em Aberto';stBtn.onclick=async()=>{await FS.setAdiant({...a,quitado:!a.quitado});};stTd.append(stBtn);}
+      else{const b=el('span',{className:'bdg '+(a.quitado?'bdg-green':'bdg-amber')});b.textContent=a.quitado?'Quitado':'Em Aberto';stTd.append(b);}
+      tr.append(stTd);
       if(canEdit){const atd=document.createElement('td');const db2=el('button',{className:'btn btn-danger btn-sm'});db2.textContent='🗑️';db2.onclick=async()=>{if(!confirm('Excluir este adiantamento?'))return;await FS.delAdiant(a.id);toast('Adiantamento excluído.');};atd.append(db2);tr.append(atd);}
       tbody.append(tr);
     });
@@ -2243,6 +2271,141 @@ function exportObraServicosAbertosPDF(obraId){
     toast('PDF gerado!');
   });
 }
+function buildFuncSummaryModal(){
+  const fd=S.formData;const f=S.funcs.find(x=>x.id===fd.funcId);
+  const box=el('div',{className:'modal-box',style:'max-width:600px;'});const mh=el('div',{className:'modal-hdr'});const ht=el('span',{className:'hdr',style:'font-size:18px;'});ht.textContent='👷 '+(f?.nome||'Funcionário');const cl=el('button',{className:'modal-close'});cl.textContent='✕';cl.onclick=()=>{S.modal=null;S.formData={};render();};mh.append(ht,cl);
+  const body=el('div',{className:'modal-body'});
+  if(!f){body.innerHTML='<p style="color:var(--dim);">Funcionário não encontrado.</p>';box.append(mh,body);return box;}
+  const fa=S.apts.filter(a=>a.fId===f.id).sort((a,b)=>a.data.localeCompare(b.data));
+  const inicio=fa.length?fa[0].data:null;
+  const isPago2=a=>S.pagamentos.some(p=>p.fId===a.fId&&(p.aptIds||[]).includes(a.id));
+  const pagos=fa.filter(isPago2);const pendentes=fa.filter(a=>!isPago2(a));
+  const recebido=pagos.reduce((s,a)=>s+a.tot,0);const valorPendente=pendentes.reduce((s,a)=>s+a.tot,0);
+  const adiants=S.adiants.filter(a=>a.fId===f.id).sort((a,b)=>b.data.localeCompare(a.data));
+  const adiantAberto=adiants.filter(a=>!a.quitado).reduce((s,a)=>s+a.valor,0);const adiantTotal=adiants.reduce((s,a)=>s+a.valor,0);
+  const info=el('div',{style:'display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);margin-bottom:14px;'});
+  info.innerHTML='<span>Cargo: <b style="color:var(--text);">'+(CARGOS_LABEL[f.cargo]||f.cargo)+'</b></span><span>Status: '+(f.ativo?'<span class="bdg bdg-green">Ativo</span>':'<span class="bdg bdg-red">Inativo</span>')+'</span>'+(f.tel?'<span>Telefone: <b style="color:var(--text);">'+f.tel+'</b></span>':'')+'<span>Diária: <b style="color:var(--text);">'+fmt$(f.diaria||0)+'</b></span>';
+  const stats=el('div',{className:'grid-auto'});
+  stats.append(mkStat('📅','Início',inicio?fmtD(inicio):'—','primeiro apontamento','blue'),mkStat('✅','Dias Trabalhados',fa.length,'no total','amber'),mkStat('💰','Já Recebido',fmt$(recebido),pagos.length+' dias pagos','green'),mkStat('⏳','Dias Pendentes',pendentes.length,fmt$(valorPendente),'red'));
+  const adSec=el('div',{style:'margin-top:14px;'});
+  adSec.innerHTML='<p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Adiantamentos</p>';
+  const adRow=el('div',{style:'display:flex;gap:10px;margin-bottom:10px;'});
+  adRow.innerHTML='<div style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;"><span style="font-size:11px;color:var(--muted);">Em aberto</span><br><b style="color:var(--amber);font-size:15px;">'+fmt$(adiantAberto)+'</b></div><div style="flex:1;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;"><span style="font-size:11px;color:var(--muted);">Total histórico</span><br><b style="color:var(--text);font-size:15px;">'+fmt$(adiantTotal)+'</b></div>';
+  adSec.append(adRow);
+  if(adiants.length){
+    const adList=el('div',{style:'display:flex;flex-direction:column;gap:4px;max-height:120px;overflow-y:auto;'});
+    adiants.slice(0,10).forEach(a=>{const r=el('div',{style:'display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--border);'});r.innerHTML='<span>'+fmtD(a.data)+' — '+(a.desc||'—')+'</span><span style="color:'+(a.quitado?'var(--green)':'var(--amber)')+';">'+fmt$(a.valor)+(a.quitado?' ✓':'')+'</span>';adList.append(r);});
+    adSec.append(adList);
+  }
+  body.append(info,stats,adSec);
+  const btns=el('div',{style:'display:flex;gap:8px;justify-content:flex-end;margin-top:14px;'});
+  const cn=el('button',{className:'btn btn-ghost'});cn.textContent='Fechar';cn.onclick=()=>{S.modal=null;S.formData={};render();};
+  const pdfB=el('button',{className:'btn btn-amber'});pdfB.textContent='📥 Baixar PDF';pdfB.onclick=()=>exportFuncSummaryPDF(f.id);
+  btns.append(cn,pdfB);body.append(btns);
+  box.append(mh,body);return box;
+}
+function exportFuncSummaryPDF(funcId){
+  loadJsPDF(()=>{
+    const{jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});const W=210,mar=15;let y=36;
+    const f=S.funcs.find(x=>x.id===funcId);if(!f)return;
+    pdfHeader(doc,W,mar,'Resumo do Funcionário',f.nome);
+    const fa=S.apts.filter(a=>a.fId===f.id).sort((a,b)=>a.data.localeCompare(b.data));
+    const inicio=fa.length?fa[0].data:null;
+    const isPago2=a=>S.pagamentos.some(p=>p.fId===a.fId&&(p.aptIds||[]).includes(a.id));
+    const pagos=fa.filter(isPago2);const pendentes=fa.filter(a=>!isPago2(a));
+    const recebido=pagos.reduce((s,a)=>s+a.tot,0);const valorPendente=pendentes.reduce((s,a)=>s+a.tot,0);
+    const adiants=S.adiants.filter(a=>a.fId===f.id);
+    const adiantAberto=adiants.filter(a=>!a.quitado).reduce((s,a)=>s+a.valor,0);
+    doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(60,60,60);
+    const lines=['Cargo: '+(CARGOS_LABEL[f.cargo]||f.cargo),'Status: '+(f.ativo?'Ativo':'Inativo'),'Diária: '+fmt$(f.diaria||0),'Início (1º apontamento): '+(inicio?fmtD(inicio):'—'),'Dias Trabalhados: '+fa.length,'Já Recebido: '+fmt$(recebido)+' ('+pagos.length+' dias pagos)','Dias Pendentes: '+pendentes.length+' — Valor Pendente: '+fmt$(valorPendente),'Adiantamentos em Aberto: '+fmt$(adiantAberto)];
+    lines.forEach(l=>{doc.text(l,mar,y);y+=7;});
+    y+=4;
+    if(adiants.length){doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(90,90,90);doc.text('ADIANTAMENTOS',mar,y);y+=6;doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(60,60,60);
+      adiants.forEach(a=>{if(y>270){doc.addPage();y=20;}doc.text(fmtD(a.data)+' — '+(a.desc||'—')+' — '+fmt$(a.valor)+(a.quitado?' (Quitado)':' (Aberto)'),mar,y);y+=6;});}
+    pdfFooter(doc,W,mar);doc.save('Resumo_'+f.nome.replace(/[^a-zA-Z0-9]/g,'_')+'.pdf');toast('PDF gerado!');
+  });
+}
+function buildClienteSummaryModal(){
+  const fd=S.formData;const c=S.clientes.find(x=>x.id===fd.clienteId);
+  const box=el('div',{className:'modal-box',style:'max-width:600px;'});const mh=el('div',{className:'modal-hdr'});const ht=el('span',{className:'hdr',style:'font-size:18px;'});ht.textContent='🏢 '+(c?.nome||'Cliente');const cl=el('button',{className:'modal-close'});cl.textContent='✕';cl.onclick=()=>{S.modal=null;S.formData={};render();};mh.append(ht,cl);
+  const body=el('div',{className:'modal-body'});
+  if(!c){body.innerHTML='<p style="color:var(--dim);">Cliente não encontrado.</p>';box.append(mh,body);return box;}
+  const obrasCli=S.obras.filter(o=>o.clienteId===c.id);
+  const custoTot=obrasCli.reduce((s,o)=>s+(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id)).reduce((x,a)=>x+a.tot,0),0);
+  const svsAll=obrasCli.flatMap(o=>(S.servicos||[]).filter(sv=>sv.obraId===o.id));
+  const valorAberto=svsAll.filter(sv=>sv.status!=='finalizado').reduce((s,sv)=>s+(sv.valor||0),0);
+  const valorFinalizado=svsAll.filter(sv=>sv.status==='finalizado').reduce((s,sv)=>s+(sv.valor||0),0);
+  const info=el('div',{style:'display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);margin-bottom:14px;'});
+  info.innerHTML=(c.responsavel?'<span>Responsável: <b style="color:var(--text);">'+c.responsavel+(c.telResponsavel?' — '+c.telResponsavel:'')+'</b></span>':'')+(c.telefone?'<span>Telefone: <b style="color:var(--text);">'+c.telefone+'</b></span>':'')+(c.email?'<span>Email: <b style="color:var(--text);">'+c.email+'</b></span>':'')+'<span>Status: '+(c.ativo?'<span class="bdg bdg-green">Ativo</span>':'<span class="bdg bdg-red">Inativo</span>')+'</span>';
+  const stats=el('div',{className:'grid-auto'});
+  stats.append(mkStat('🏗️','Obras',obrasCli.length,obrasCli.filter(o=>o.ativa).length+' ativas','blue'),mkStat('💰','Custo Total',fmt$(custoTot),'mão de obra','green'),mkStat('🔧','Serviços em Execução',fmt$(valorAberto),'','amber'),mkStat('✅','Serviços Finalizados',fmt$(valorFinalizado),'','green'));
+  const obList=el('div',{style:'margin-top:14px;'});
+  if(obrasCli.length){obList.innerHTML='<p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Obras</p>';
+    obrasCli.forEach(o=>{const r=el('div',{style:'display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);'});r.innerHTML='<span>'+o.nome+'</span>'+(o.ativa?'<span class="bdg bdg-green">Ativa</span>':'<span class="bdg bdg-red">Encerrada</span>');obList.append(r);});}
+  body.append(info,stats,obList);
+  const btns=el('div',{style:'display:flex;gap:8px;justify-content:flex-end;margin-top:14px;'});
+  const cn=el('button',{className:'btn btn-ghost'});cn.textContent='Fechar';cn.onclick=()=>{S.modal=null;S.formData={};render();};
+  const pdfB=el('button',{className:'btn btn-amber'});pdfB.textContent='📥 Baixar PDF';pdfB.onclick=()=>exportClienteSummaryPDF(c.id);
+  btns.append(cn,pdfB);body.append(btns);
+  box.append(mh,body);return box;
+}
+function exportClienteSummaryPDF(clienteId){
+  loadJsPDF(()=>{
+    const{jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});const W=210,mar=15;let y=36;
+    const c=S.clientes.find(x=>x.id===clienteId);if(!c)return;
+    pdfHeader(doc,W,mar,'Resumo do Cliente',c.nome);
+    const obrasCli=S.obras.filter(o=>o.clienteId===c.id);
+    const custoTot=obrasCli.reduce((s,o)=>s+(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id)).reduce((x,a)=>x+a.tot,0),0);
+    doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(60,60,60);
+    const lines=[(c.responsavel?'Responsável: '+c.responsavel+(c.telResponsavel?' — '+c.telResponsavel:''):null),(c.telefone?'Telefone: '+c.telefone:null),(c.email?'Email: '+c.email:null),'Status: '+(c.ativo?'Ativo':'Inativo'),'Total de Obras: '+obrasCli.length+' ('+obrasCli.filter(o=>o.ativa).length+' ativas)','Custo Total (mão de obra): '+fmt$(custoTot)].filter(Boolean);
+    lines.forEach(l=>{doc.text(l,mar,y);y+=7;});
+    y+=4;
+    if(obrasCli.length){doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(90,90,90);doc.text('OBRAS',mar,y);y+=6;doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(60,60,60);
+      obrasCli.forEach(o=>{if(y>270){doc.addPage();y=20;}doc.text(o.nome+' — '+(o.ativa?'Ativa':'Encerrada'),mar,y);y+=6;});}
+    pdfFooter(doc,W,mar);doc.save('Resumo_Cliente_'+c.nome.replace(/[^a-zA-Z0-9]/g,'_')+'.pdf');toast('PDF gerado!');
+  });
+}
+function buildObraSummaryModal(){
+  const fd=S.formData;const o=S.obras.find(x=>x.id===fd.obraId);
+  const box=el('div',{className:'modal-box',style:'max-width:600px;'});const mh=el('div',{className:'modal-hdr'});const ht=el('span',{className:'hdr',style:'font-size:18px;'});ht.textContent='🏗️ '+(o?.nome||'Obra');const cl=el('button',{className:'modal-close'});cl.textContent='✕';cl.onclick=()=>{S.modal=null;S.formData={};render();};mh.append(ht,cl);
+  const body=el('div',{className:'modal-body'});
+  if(!o){body.innerHTML='<p style="color:var(--dim);">Obra não encontrada.</p>';box.append(mh,body);return box;}
+  const cli=S.clientes.find(c=>c.id===o.clienteId);const enc=S.funcs.find(f=>f.id===o.encId);
+  const oSv=(S.servicos||[]).filter(sv=>sv.obraId===o.id);
+  const custoMaoObra=(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id)).reduce((s,a)=>s+a.tot,0);
+  const valorAberto=oSv.filter(sv=>sv.status!=='finalizado').reduce((s,sv)=>s+(sv.valor||0),0);
+  const valorFinalizado=oSv.filter(sv=>sv.status==='finalizado').reduce((s,sv)=>s+(sv.valor||0),0);
+  const info=el('div',{style:'display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);margin-bottom:14px;'});
+  info.innerHTML='<span>Cliente: <b style="color:var(--text);">'+(cli?.nome||'—')+'</b></span><span>Endereço: <b style="color:var(--text);">'+(o.end||'—')+'</b></span><span>Encarregado: <b style="color:var(--text);">'+(enc?.nome||'—')+'</b></span><span>Status: '+(o.ativa?'<span class="bdg bdg-green">Ativa</span>':'<span class="bdg bdg-red">Encerrada</span>')+'</span>';
+  const stats=el('div',{className:'grid-auto'});
+  stats.append(mkStat('📋','Serviços',oSv.length,oSv.filter(sv=>sv.status!=='finalizado').length+' em execução','amber'),mkStat('👷','Custo Mão de Obra',fmt$(custoMaoObra),'apontamentos','green'),mkStat('🔧','Valor em Execução',fmt$(valorAberto),'','amber'),mkStat('✅','Valor Finalizado',fmt$(valorFinalizado),'','green'));
+  const svList=el('div',{style:'margin-top:14px;'});
+  if(oSv.length){svList.innerHTML='<p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Serviços</p>';
+    oSv.forEach(sv=>{const r=el('div',{style:'display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px solid var(--border);'});r.innerHTML='<span>'+sv.nome+'</span><span>'+fmt$(sv.valor||0)+' — '+(sv.status==='finalizado'?'<span class="bdg bdg-green">Finalizado</span>':'<span class="bdg bdg-amber">Em execução</span>')+'</span>';svList.append(r);});}
+  body.append(info,stats,svList);
+  const btns=el('div',{style:'display:flex;gap:8px;justify-content:flex-end;margin-top:14px;'});
+  const cn=el('button',{className:'btn btn-ghost'});cn.textContent='Fechar';cn.onclick=()=>{S.modal=null;S.formData={};render();};
+  const pdfB=el('button',{className:'btn btn-amber'});pdfB.textContent='📥 Baixar PDF';pdfB.onclick=()=>exportObraSummaryPDF(o.id);
+  btns.append(cn,pdfB);body.append(btns);
+  box.append(mh,body);return box;
+}
+function exportObraSummaryPDF(obraId){
+  loadJsPDF(()=>{
+    const{jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});const W=210,mar=15;let y=36;
+    const o=S.obras.find(x=>x.id===obraId);if(!o)return;
+    const cli=S.clientes.find(c=>c.id===o.clienteId);const enc=S.funcs.find(f=>f.id===o.encId);
+    pdfHeader(doc,W,mar,'Resumo da Obra',o.nome);
+    const oSv=(S.servicos||[]).filter(sv=>sv.obraId===o.id);
+    const custoMaoObra=(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id)).reduce((s,a)=>s+a.tot,0);
+    doc.setFont('helvetica','normal');doc.setFontSize(10);doc.setTextColor(60,60,60);
+    const lines=['Cliente: '+(cli?.nome||'—'),'Endereço: '+(o.end||'—'),'Encarregado: '+(enc?.nome||'—'),'Status: '+(o.ativa?'Ativa':'Encerrada'),'Custo Mão de Obra: '+fmt$(custoMaoObra)];
+    lines.forEach(l=>{doc.text(l,mar,y);y+=7;});
+    y+=4;
+    if(oSv.length){doc.setFont('helvetica','bold');doc.setFontSize(9);doc.setTextColor(90,90,90);doc.text('SERVIÇOS',mar,y);y+=6;doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(60,60,60);
+      oSv.forEach(sv=>{if(y>270){doc.addPage();y=20;}doc.text(sv.nome+' — '+fmt$(sv.valor||0)+' — '+(sv.status==='finalizado'?'Finalizado':'Em execução'),mar,y);y+=6;});}
+    pdfFooter(doc,W,mar);doc.save('Resumo_Obra_'+o.nome.replace(/[^a-zA-Z0-9]/g,'_')+'.pdf');toast('PDF gerado!');
+  });
+}
 function buildServicoDetailModal(){
   const fd=S.formData;const sv=S.servicos.find(s=>s.id===fd.servicoId);const o=sv?S.obras.find(x=>x.id===sv.obraId):null;
   const box=el('div',{className:'modal-box'});const mh=el('div',{className:'modal-hdr'});const ht=el('span',{className:'hdr',style:'font-size:19px;'});ht.textContent=sv?.nome||'Serviço';const cl=el('button',{className:'modal-close'});cl.textContent='✕';cl.onclick=()=>{S.modal=null;S.formData={};render();};mh.append(ht,cl);
@@ -2277,11 +2440,20 @@ function buildRelClientes(){
   ctrl.append(pdfBtn,xlsBtn);hdr.append(ctrl);
   const srch=mkSearchInput('🔍 Buscar cliente por nome...','srchRelClientes');
   const cs=(S.clientes||[]).filter(c=>c.nome.toLowerCase().includes((S.srchRelClientes||'').toLowerCase())).sort((a,b)=>a.nome.localeCompare(b.nome));
-  const rows=cs.map(c=>{
+  const tw=el('div',{className:'tbl-wrap'});
+  const tbl=document.createElement('table');const thead=document.createElement('thead');const hRow=document.createElement('tr');
+  ['Cliente','Telefone','Status','Obras','Ativas','Custo Total'].forEach(h=>{const th=document.createElement('th');th.textContent=h;hRow.append(th);});
+  thead.append(hRow);tbl.append(thead);
+  const tbody=document.createElement('tbody');
+  cs.forEach(c=>{
     const obrasCli=S.obras.filter(o=>o.clienteId===c.id);const custoTot=obrasCli.reduce((s,o)=>s+(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id)).reduce((x,a)=>x+a.tot,0),0);
-    return[[c.nome,'font-weight:500;'],[c.telefone||'—',''],[c.ativo?'Ativo':'Inativo','color:'+(c.ativo?'var(--green)':'var(--red)')+';'],[String(obrasCli.length),'text-align:center;'],[String(obrasCli.filter(o=>o.ativa).length),'text-align:center;'],[fmt$(custoTot),'color:var(--green);font-weight:600;white-space:nowrap;']];
+    const tr=document.createElement('tr');tr.style.cursor='pointer';
+    tr.onclick=()=>{S.modal='clienteSummary';S.formData={clienteId:c.id};render();};
+    const cells=[[c.nome,'font-weight:500;'],[c.telefone||'—',''],[c.ativo?'Ativo':'Inativo','color:'+(c.ativo?'var(--green)':'var(--red)')+';'],[String(obrasCli.length),'text-align:center;'],[String(obrasCli.filter(o=>o.ativa).length),'text-align:center;'],[fmt$(custoTot),'color:var(--green);font-weight:600;white-space:nowrap;']];
+    cells.forEach(([v,s])=>{const td=document.createElement('td');td.style.cssText=s;td.textContent=v;tr.append(td);});
+    tbody.append(tr);
   });
-  const tw=el('div',{className:'tbl-wrap'});tw.appendChild(buildTable(['Cliente','Telefone','Status','Obras','Ativas','Custo Total'],rows));
+  tbl.append(tbody);tw.appendChild(tbl);
   const card=el('div',{className:'card'});card.append(tw);
   div.append(hdr,srch,card);
   if(!cs.length){const e=el('div',{className:'card'});e.innerHTML='<p style="color:var(--dim);text-align:center;padding:20px;">Nenhum cliente.</p>';div.append(e);}
@@ -2313,7 +2485,7 @@ function exportRelClientesXLS(){
   exportCSV('TIMOVI_Clientes.csv',['Cliente','CPF','RG','Email','Telefone','Rua','Numero','Bairro','Cidade','UF','CEP','Status','Total Obras','Obras Ativas','Custo Total'],rows);
 }
 
-function buildRelObras(){const div=flex('col',16);const hdr=el('div',{className:'page-hdr'});hdr.innerHTML='<div><h1 class="hdr page-title">Relatorio de Obras</h1></div>';if(!S.obrasFilter)S.obrasFilter='todas';const filtRow=el('div',{style:'display:flex;gap:6px;margin-bottom:4px;flex-wrap:wrap;align-items:center;'});['todas','ativas','encerradas'].forEach(f=>{const b=el('button',{className:'btn btn-sm '+(S.obrasFilter===f?'btn-amber':'btn-ghost')});b.textContent=f.charAt(0).toUpperCase()+f.slice(1);b.onclick=()=>{S.obrasFilter=f;render();};filtRow.append(b);});const pdfBtn=el('button',{className:'btn btn-blue btn-sm',style:'margin-left:auto;'});pdfBtn.textContent='PDF Obras';pdfBtn.onclick=()=>exportRelObrasPDF();filtRow.append(pdfBtn);const xlsBtn=el('button',{className:'btn btn-success btn-sm'});xlsBtn.textContent='📊 Excel';xlsBtn.onclick=()=>exportRelObrasXLS();filtRow.append(xlsBtn);const srch=mkSearchInput('🔍 Buscar obra por nome...','srchRelObras');const obrasVis=S.obras.filter(o=>S.obrasFilter==='todas'?true:S.obrasFilter==='ativas'?o.ativa:!o.ativa).filter(o=>o.nome.toLowerCase().includes((S.srchRelObras||'').toLowerCase()));const tc=obrasVis.reduce((s,o)=>s+(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id)).reduce((x,a)=>x+a.tot,0),0);const tSv=(S.servicos||[]).filter(sv=>obrasVis.some(o=>o.id===sv.obraId));const stats=el('div',{className:'grid-auto'});stats.append(mkStat('🏗️','Obras',obrasVis.length,'total','blue'),mkStat('📋','Servicos',tSv.length,'total','amber'),mkStat('✅','Finalizados',tSv.filter(sv=>sv.status==='finalizado').length,'ok','green'),mkStat('💰','Custo',fmt$(tc),'total','green'));div.append(hdr,filtRow,srch,stats);if(!obrasVis.length){const e=el('div',{className:'card'});e.innerHTML='<p style="color:var(--dim);text-align:center;padding:20px;">Nenhuma obra.</p>';div.append(e);return div;}obrasVis.forEach((o,oi)=>{const enc=S.funcs.find(f=>f.id===o.encId);const oSv=(S.servicos||[]).filter(sv=>sv.obraId===o.id);const oApts=(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id));const oTot=oApts.reduce((s,a)=>s+a.tot,0);const oColor=obraColor(oi);const card=el('div',{className:'card',style:'border-left:4px solid '+oColor+';'});card.innerHTML='<h3 class="hdr" style="font-size:18px;color:'+oColor+';margin-bottom:6px;">'+o.nome+'</h3><p style="font-size:12px;color:var(--muted);margin-bottom:4px;">'+o.end+'</p><p style="font-size:12px;color:var(--dim);margin-bottom:10px;">Enc: '+(enc?.nome||'—')+'</p>';const cRow=el('div',{style:'display:flex;justify-content:space-between;align-items:center;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:10px;'});cRow.innerHTML='<span style="font-size:12px;color:var(--muted);">Total</span><span style="font-size:16px;font-weight:700;color:var(--green);">'+fmt$(oTot)+'</span>';card.append(cRow);if(oSv.length){const sSec=el('div',{style:'margin-bottom:10px;'});sSec.innerHTML='<p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Servicos ('+oSv.length+')</p>';const tw=el('div',{className:'tbl-wrap'});tw.appendChild(buildTable(['Servico','Inicio','Fim','Status'],[...oSv].map(sv=>[[sv.nome,'font-weight:500;'],[fmtD(sv.dataInicio)||'—','white-space:nowrap;'],[sv.dataFim?fmtD(sv.dataFim):'—','white-space:nowrap;'],[sv.status==='finalizado'?'✅ Finalizado':'🔧 Em execução','color:'+(sv.status==='finalizado'?'var(--green)':'var(--amber)')+';font-weight:500;']])));sSec.append(tw);card.append(sSec);}div.append(card);});return div;}
+function buildRelObras(){const div=flex('col',16);const hdr=el('div',{className:'page-hdr'});hdr.innerHTML='<div><h1 class="hdr page-title">Relatorio de Obras</h1></div>';if(!S.obrasFilter)S.obrasFilter='todas';const filtRow=el('div',{style:'display:flex;gap:6px;margin-bottom:4px;flex-wrap:wrap;align-items:center;'});['todas','ativas','encerradas'].forEach(f=>{const b=el('button',{className:'btn btn-sm '+(S.obrasFilter===f?'btn-amber':'btn-ghost')});b.textContent=f.charAt(0).toUpperCase()+f.slice(1);b.onclick=()=>{S.obrasFilter=f;render();};filtRow.append(b);});const pdfBtn=el('button',{className:'btn btn-blue btn-sm',style:'margin-left:auto;'});pdfBtn.textContent='PDF Obras';pdfBtn.onclick=()=>exportRelObrasPDF();filtRow.append(pdfBtn);const xlsBtn=el('button',{className:'btn btn-success btn-sm'});xlsBtn.textContent='📊 Excel';xlsBtn.onclick=()=>exportRelObrasXLS();filtRow.append(xlsBtn);const srch=mkSearchInput('🔍 Buscar obra por nome...','srchRelObras');const obrasVis=S.obras.filter(o=>S.obrasFilter==='todas'?true:S.obrasFilter==='ativas'?o.ativa:!o.ativa).filter(o=>o.nome.toLowerCase().includes((S.srchRelObras||'').toLowerCase()));const tc=obrasVis.reduce((s,o)=>s+(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id)).reduce((x,a)=>x+a.tot,0),0);const tSv=(S.servicos||[]).filter(sv=>obrasVis.some(o=>o.id===sv.obraId));const stats=el('div',{className:'grid-auto'});stats.append(mkStat('🏗️','Obras',obrasVis.length,'total','blue'),mkStat('📋','Servicos',tSv.length,'total','amber'),mkStat('✅','Finalizados',tSv.filter(sv=>sv.status==='finalizado').length,'ok','green'),mkStat('💰','Custo',fmt$(tc),'total','green'));div.append(hdr,filtRow,srch,stats);if(!obrasVis.length){const e=el('div',{className:'card'});e.innerHTML='<p style="color:var(--dim);text-align:center;padding:20px;">Nenhuma obra.</p>';div.append(e);return div;}obrasVis.forEach((o,oi)=>{const enc=S.funcs.find(f=>f.id===o.encId);const oSv=(S.servicos||[]).filter(sv=>sv.obraId===o.id);const oApts=(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id));const oTot=oApts.reduce((s,a)=>s+a.tot,0);const oColor=obraColor(oi);const card=el('div',{className:'card',style:'border-left:4px solid '+oColor+';cursor:pointer;'});card.onclick=()=>{S.modal='obraSummary';S.formData={obraId:o.id};render();};card.innerHTML='<h3 class="hdr" style="font-size:18px;color:'+oColor+';margin-bottom:6px;">'+o.nome+'</h3><p style="font-size:12px;color:var(--muted);margin-bottom:4px;">'+o.end+'</p><p style="font-size:12px;color:var(--dim);margin-bottom:10px;">Enc: '+(enc?.nome||'—')+'</p>';const cRow=el('div',{style:'display:flex;justify-content:space-between;align-items:center;background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:10px;'});cRow.innerHTML='<span style="font-size:12px;color:var(--muted);">Total</span><span style="font-size:16px;font-weight:700;color:var(--green);">'+fmt$(oTot)+'</span>';card.append(cRow);if(oSv.length){const sSec=el('div',{style:'margin-bottom:10px;'});sSec.innerHTML='<p style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:8px;">Servicos ('+oSv.length+')</p>';const tw=el('div',{className:'tbl-wrap'});tw.appendChild(buildTable(['Servico','Inicio','Fim','Status'],[...oSv].map(sv=>[[sv.nome,'font-weight:500;'],[fmtD(sv.dataInicio)||'—','white-space:nowrap;'],[sv.dataFim?fmtD(sv.dataFim):'—','white-space:nowrap;'],[sv.status==='finalizado'?'✅ Finalizado':'🔧 Em execução','color:'+(sv.status==='finalizado'?'var(--green)':'var(--amber)')+';font-weight:500;']])));sSec.append(tw);card.append(sSec);}div.append(card);});return div;}
 function exportRelObrasPDF(){loadJsPDF(()=>{const{jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});const W=210,mar=15;let y=36;const obrasVis=S.obras.filter(o=>S.obrasFilter==='todas'?true:S.obrasFilter==='ativas'?o.ativa:!o.ativa);pdfHeader(doc,W,mar,'Relatorio de Obras',new Date().toLocaleDateString('pt-BR'));const tc=obrasVis.reduce((s,o)=>s+(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id)).reduce((x,a)=>x+a.tot,0),0);doc.setFillColor(21,30,46);doc.roundedRect(mar,y,W-2*mar,12,2,2,'F');doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(107,130,160);doc.text(obrasVis.length+' obras | Custo: '+fmt$(tc),mar+4,y+8);y+=20;obrasVis.forEach(o=>{if(y>255){doc.addPage();y=20;}const enc=S.funcs.find(f=>f.id===o.encId);const oSv=(S.servicos||[]).filter(sv=>sv.obraId===o.id);const oTot=(S.apts||[]).filter(a=>(a.oIds||[a.oId]).includes(o.id)).reduce((s,a)=>s+a.tot,0);doc.setFillColor(17,25,39);doc.roundedRect(mar,y,W-2*mar,16,2,2,'F');doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(221,228,240);doc.text(o.nome.slice(0,38),mar+4,y+6);doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(107,130,160);doc.text('Enc: '+(enc?.nome||'—'),mar+4,y+12);doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(34,197,94);doc.text(fmt$(oTot),W-mar-2,y+10,{align:'right'});y+=22;oSv.forEach((sv,i)=>{if(y>278){doc.addPage();y=20;}if(i%2===0){doc.setFillColor(17,25,39);doc.rect(mar,y-3,W-2*mar,7,'F');}doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(sv.status==='finalizado'?[34,197,94]:[7,78,187]);doc.text(sv.status==='finalizado'?'[FIN]':'[PEN]',mar+2,y+1.5);doc.setTextColor(221,228,240);doc.text(sv.nome.slice(0,30),mar+14,y+1.5);y+=7;});doc.setDrawColor(30,45,71);doc.line(mar,y+2,W-mar,y+2);y+=8;});pdfFooter(doc,W,mar);doc.save('TIMOVI_Obras.pdf');toast('PDF exportado!');});}
 
 function exportRelObrasXLS(){
@@ -2335,11 +2507,20 @@ function buildRelFuncs(){
   ctrl.append(pdfBtn,xlsBtn);hdr.append(ctrl);
   const srch=mkSearchInput('🔍 Buscar por nome...','srchRelFuncs');
   const fcs=S.funcs.filter(f=>f.cargo!=='master').filter(f=>f.nome.toLowerCase().includes((S.srchRelFuncs||'').toLowerCase())).sort((a,b)=>a.nome.localeCompare(b.nome));
-  const rows=fcs.map(f=>{
-    const fa=S.apts.filter(a=>a.fId===f.id);const bruto=fa.reduce((s,a)=>s+a.tot,0);const ad=S.adiants.filter(a=>a.fId===f.id).reduce((s,a)=>s+a.valor,0);
-    return[[f.nome,'font-weight:500;'],[CARGOS_LABEL[f.cargo]||f.cargo,'color:var(--muted);'],[f.ativo?'Ativo':'Inativo','color:'+(f.ativo?'var(--green)':'var(--red)')+';'],[fmt$(f.diaria),'white-space:nowrap;'],[String(fa.length),'text-align:center;'],[fmt$(bruto),'color:var(--amber);white-space:nowrap;'],[fmt$(ad),'color:var(--red);white-space:nowrap;'],[fmt$(Math.max(0,bruto-ad)),'color:var(--green);font-weight:600;white-space:nowrap;']];
+  const tw=el('div',{className:'tbl-wrap'});
+  const tbl=document.createElement('table');const thead=document.createElement('thead');const hRow=document.createElement('tr');
+  ['Nome','Cargo','Status','Diária','Dias','Bruto','Adiant. do Mês','Saldo'].forEach(h=>{const th=document.createElement('th');th.textContent=h;hRow.append(th);});
+  thead.append(hRow);tbl.append(thead);
+  const tbody=document.createElement('tbody');
+  fcs.forEach(f=>{
+    const fa=S.apts.filter(a=>a.fId===f.id);const bruto=fa.reduce((s,a)=>s+a.tot,0);const ad=S.adiants.filter(a=>a.fId===f.id&&!a.quitado&&(a.data||'').slice(0,7)===curMes).reduce((s,a)=>s+a.valor,0);
+    const tr=document.createElement('tr');tr.style.cursor='pointer';
+    tr.onclick=()=>{S.modal='funcSummary';S.formData={funcId:f.id};render();};
+    const cells=[[f.nome,'font-weight:500;'],[CARGOS_LABEL[f.cargo]||f.cargo,'color:var(--muted);'],[f.ativo?'Ativo':'Inativo','color:'+(f.ativo?'var(--green)':'var(--red)')+';'],[fmt$(f.diaria),'white-space:nowrap;'],[String(fa.length),'text-align:center;'],[fmt$(bruto),'color:var(--amber);white-space:nowrap;'],[fmt$(ad),'color:var(--red);white-space:nowrap;'],[fmt$(Math.max(0,bruto-ad)),'color:var(--green);font-weight:600;white-space:nowrap;']];
+    cells.forEach(([v,s])=>{const td=document.createElement('td');td.style.cssText=s;td.textContent=v;tr.append(td);});
+    tbody.append(tr);
   });
-  const tw=el('div',{className:'tbl-wrap'});tw.appendChild(buildTable(['Nome','Cargo','Status','Diária','Dias','Bruto','Adiant.','Saldo'],rows));
+  tbl.append(tbody);tw.appendChild(tbl);
   const card=el('div',{className:'card'});card.append(tw);
   div.append(hdr,srch,card);
   if(!fcs.length){const e=el('div',{className:'card'});e.innerHTML='<p style="color:var(--dim);text-align:center;padding:20px;">Nenhum funcionário.</p>';div.append(e);}
@@ -2351,11 +2532,11 @@ function exportRelFuncsPDF(){
     pdfHeader(doc,W,mar,'Relatorio de Funcionarios',new Date().toLocaleDateString('pt-BR'));
     const fcs=S.funcs.filter(f=>f.cargo!=='master').sort((a,b)=>a.nome.localeCompare(b.nome));
     doc.setFont('helvetica','bold');doc.setFontSize(7.5);doc.setTextColor(107,130,160);
-    ['Nome','Cargo','Status','Diaria','Dias','Bruto','Adiant.','Saldo'].forEach((h,i)=>{doc.text(h,mar+i*22,y);});
+    ['Nome','Cargo','Status','Diaria','Dias','Bruto','Adiant.Mes','Saldo'].forEach((h,i)=>{doc.text(h,mar+i*22,y);});
     y+=5;doc.setDrawColor(30,45,71);doc.line(mar,y-3,W-mar,y-3);
     fcs.forEach(f=>{
       if(y>275){doc.addPage();y=20;}
-      const fa=S.apts.filter(a=>a.fId===f.id);const bruto=fa.reduce((s,a)=>s+a.tot,0);const ad=S.adiants.filter(a=>a.fId===f.id).reduce((s,a)=>s+a.valor,0);
+      const fa=S.apts.filter(a=>a.fId===f.id);const bruto=fa.reduce((s,a)=>s+a.tot,0);const ad=S.adiants.filter(a=>a.fId===f.id&&!a.quitado&&(a.data||'').slice(0,7)===curMes).reduce((s,a)=>s+a.valor,0);
       doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(221,228,240);
       doc.text(f.nome.slice(0,18),mar,y);doc.text((CARGOS_LABEL[f.cargo]||f.cargo).slice(0,12),mar+22,y);doc.text(f.ativo?'Ativo':'Inativo',mar+44,y);doc.text(fmt$(f.diaria),mar+66,y);doc.text(String(fa.length),mar+88,y);doc.text(fmt$(bruto),mar+110,y);doc.text(fmt$(ad),mar+132,y);doc.text(fmt$(Math.max(0,bruto-ad)),mar+154,y);
       y+=6;
@@ -2365,10 +2546,10 @@ function exportRelFuncsPDF(){
 }
 function exportRelFuncsXLS(){
   const fcs=S.funcs.filter(f=>f.cargo!=='master').sort((a,b)=>a.nome.localeCompare(b.nome));
-  const rows=fcs.map(f=>{const fa=S.apts.filter(a=>a.fId===f.id);const bruto=fa.reduce((s,a)=>s+a.tot,0);const ad=S.adiants.filter(a=>a.fId===f.id).reduce((s,a)=>s+a.valor,0);
+  const rows=fcs.map(f=>{const fa=S.apts.filter(a=>a.fId===f.id);const bruto=fa.reduce((s,a)=>s+a.tot,0);const ad=S.adiants.filter(a=>a.fId===f.id&&!a.quitado&&(a.data||'').slice(0,7)===curMes).reduce((s,a)=>s+a.valor,0);
     return[f.nome,CARGOS_LABEL[f.cargo]||f.cargo,f.ativo?'Ativo':'Inativo',f.diaria,fa.length,bruto,ad,Math.max(0,bruto-ad)];
   });
-  exportCSV('TIMOVI_Funcionarios.csv',['Nome','Cargo','Status','Diaria','Dias Trabalhados','Bruto','Adiantamentos','Saldo'],rows);
+  exportCSV('TIMOVI_Funcionarios.csv',['Nome','Cargo','Status','Diaria','Dias Trabalhados','Bruto','Adiantamentos do Mes','Saldo'],rows);
 }
 
 function buildRelServicos(){
@@ -2380,8 +2561,12 @@ function buildRelServicos(){
   if(!S.relServicosFilter)S.relServicosFilter='todos';
   const filtRow=el('div',{style:'display:flex;gap:6px;'});
   [['todos','Todos'],['pendente','Em execução'],['finalizado','Finalizados']].forEach(([f,lbl])=>{const b=el('button',{className:'btn btn-sm '+(S.relServicosFilter===f?'btn-amber':'btn-ghost')});b.textContent=lbl;b.onclick=()=>{S.relServicosFilter=f;render();};filtRow.append(b);});
-  const srch=mkSearchInput('🔍 Buscar serviço por nome...','srchRelServicos');
-  const svs=(S.servicos||[]).filter(s=>S.relServicosFilter==='todos'?true:s.status===S.relServicosFilter).filter(s=>s.nome.toLowerCase().includes((S.srchRelServicos||'').toLowerCase())).sort((a,b)=>(b.dataInicio||'').localeCompare(a.dataInicio||''));
+  const srch=mkSearchInput('🔍 Buscar por cliente, obra ou serviço...','srchRelServicos');
+  const svs=(S.servicos||[]).filter(s=>S.relServicosFilter==='todos'?true:s.status===S.relServicosFilter).filter(s=>{
+    const q=(S.srchRelServicos||'').toLowerCase();if(!q)return true;
+    const o=S.obras.find(x=>x.id===s.obraId);const cli=o?S.clientes.find(c=>c.id===o.clienteId):null;
+    return s.nome.toLowerCase().includes(q)||(o?.nome||'').toLowerCase().includes(q)||(cli?.nome||'').toLowerCase().includes(q);
+  }).sort((a,b)=>(b.dataInicio||'').localeCompare(a.dataInicio||''));
   const tw=el('div',{className:'tbl-wrap'});
   const tbl=document.createElement('table');
   const thead=document.createElement('thead');const hRow=document.createElement('tr');
@@ -2567,6 +2752,9 @@ function buildModal(){
   if(S.modal==='partidaVeiculo')ov.append(buildPartidaVeiculoModal());
   if(S.modal==='paradaVeiculo')ov.append(buildParadaVeiculoModal());
   if(S.modal==='histVeiculo')ov.append(buildHistVeiculoModal());
+  if(S.modal==='funcSummary')ov.append(buildFuncSummaryModal());
+  if(S.modal==='clienteSummary')ov.append(buildClienteSummaryModal());
+  if(S.modal==='obraSummary')ov.append(buildObraSummaryModal());
   if(S.modal==='servicoDetail')ov.append(buildServicoDetailModal());
   if(S.modal==='ferramenta')ov.append(buildFerramentaModal());
   if(S.modal==='usoFerramenta')ov.append(buildUsoFerramentaModal());
@@ -2730,8 +2918,10 @@ function buildClienteModal(){
   const fBairro=mkField('Bairro','mc-bairro','text','');fBairro.querySelector('input').value=fd.bairro||'';
   const fCidade=mkField('Cidade','mc-cidade','text','');fCidade.querySelector('input').value=fd.cidade||'';
   const fUf=mkField('UF','mc-uf','text','');fUf.querySelector('input').value=fd.uf||'';
+  const fResp=mkField('Nome do Responsável','mc-responsavel','text','');fResp.querySelector('input').value=fd.responsavel||'';
+  const fTelResp=mkField('Telefone do Responsável','mc-tel-responsavel','text','');fTelResp.querySelector('input').value=fd.telResponsavel||'';
   const grid=el('div',{className:'grid2'});
-  grid.append(f1,fCpf,fRg,fEmail,fTel,fCep,fRua,fNumero,fBairro,fCidade,fUf);
+  grid.append(f1,fCpf,fRg,fEmail,fTel,fCep,fRua,fNumero,fBairro,fCidade,fUf,fResp,fTelResp);
   body.append(grid);
   const cepInpC=fCep.querySelector('input');const ruaInpC=fRua.querySelector('input');const bairroInpC=fBairro.querySelector('input');const cidadeInpC=fCidade.querySelector('input');const ufInpC=fUf.querySelector('input');
   cepInpC.addEventListener('input',()=>{
@@ -2757,6 +2947,8 @@ function buildClienteModal(){
       bairro:document.getElementById('mc-bairro')?.value||'',
       cidade:document.getElementById('mc-cidade')?.value||'',
       uf:document.getElementById('mc-uf')?.value||'',
+      responsavel:document.getElementById('mc-responsavel')?.value||'',
+      telResponsavel:document.getElementById('mc-tel-responsavel')?.value||'',
       cep:document.getElementById('mc-cep')?.value||'',
       ativo:fd.ativo!==undefined?fd.ativo:true};
     try{await FS.setCliente(obj);S.modal=null;S.formData={};render();toast(fd._new?'Cliente cadastrado!':'Cliente atualizado!');}
@@ -2851,7 +3043,8 @@ function buildParadaVeiculoModal(){
     sv.disabled=true;sv.textContent='Salvando...';
     try{
       await FS.setUsoVeiculo({...uso,dataParada:data,kmParada:km,obsParada:obs,condicao,status:'fechado'});
-      await FS.setVeiculo({...v,kmAtual:km});
+      const rodado=Math.max(0,km-(uso?.kmPartida||0));
+      await FS.setVeiculo({...v,kmAtual:(v.kmAtual||0)+rodado});
       S.modal=null;S.formData={};render();toast('Parada registrada!');
     }catch(e){toast('Erro ao salvar: '+e.message,true);sv.disabled=false;sv.textContent='Confirmar Parada';}
   };
@@ -3000,7 +3193,7 @@ function buildAdiantModal(){
   const vD=el('div',{className:'field'});vD.innerHTML='<label>Valor (R$) *</label>';const vI=el('input',{type:'number',id:'ad-valor',value:fd.valor||'',placeholder:'0,00',style:'background:var(--input);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:13px;width:100%;outline:none;'});vD.append(vI);grid.append(vD);
   const dD=el('div',{className:'field col-2'});dD.innerHTML='<label>Descrição / Motivo</label>';const dTA=el('textarea',{id:'ad-desc',placeholder:'Ex: Adiantamento solicitado, vale transporte...',style:'background:var(--input);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:13px;width:100%;resize:vertical;min-height:60px;outline:none;'});dTA.textContent=fd.desc||'';dD.append(dTA);grid.append(dD);body.append(grid);
   const btns=el('div',{style:'display:flex;gap:8px;justify-content:flex-end;margin-top:4px;'});const cn=el('button',{className:'btn btn-ghost'});cn.textContent='Cancelar';cn.onclick=()=>{S.modal=null;S.formData={};render();};const sv=el('button',{className:'btn btn-danger'});sv.textContent='💳 Registrar Adiantamento';
-  sv.onclick=async()=>{const fId=document.getElementById('ad-f')?.value;const data=document.getElementById('ad-data')?.value;const valor=+document.getElementById('ad-valor')?.value||0;const desc=(document.getElementById('ad-desc')?.value||'').trim();if(!fId){toast('Selecione o funcionário!',true);return;}if(valor<=0){toast('Informe um valor válido!',true);return;}sv.disabled=true;sv.textContent='Salvando...';const a={id:nid(),fId,data,valor,desc,regId:S.user.id,created:new Date().toISOString()};await FS.setAdiant(a);S.modal=null;S.formData={};render();toast('Adiantamento registrado!');};
+  sv.onclick=async()=>{const fId=document.getElementById('ad-f')?.value;const data=document.getElementById('ad-data')?.value;const valor=+document.getElementById('ad-valor')?.value||0;const desc=(document.getElementById('ad-desc')?.value||'').trim();if(!fId){toast('Selecione o funcionário!',true);return;}if(valor<=0){toast('Informe um valor válido!',true);return;}sv.disabled=true;sv.textContent='Salvando...';const a={id:nid(),fId,data,valor,desc,regId:S.user.id,quitado:false,created:new Date().toISOString()};await FS.setAdiant(a);S.modal=null;S.formData={};render();toast('Adiantamento registrado!');};
   btns.append(cn,sv);body.append(btns);box.append(mh,body);return box;
 }
 
