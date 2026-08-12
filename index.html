@@ -3206,9 +3206,60 @@ function buildAdiantModal(){
   const fD=el('div',{className:'field col-2'});fD.innerHTML='<label>Funcionário *</label>';const fS=el('select',{id:'ad-f',style:'background:var(--input);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:13px;width:100%;outline:none;'});const op0=el('option',{value:''});op0.textContent='Selecionar...';fS.append(op0);S.funcs.filter(f=>f.ativo&&f.cargo!=='master').forEach(f=>{const op=el('option',{value:f.id});op.textContent=f.nome+' — '+CARGOS_LABEL[f.cargo];if(f.id===fd.fId)op.selected=true;fS.append(op);});fD.append(fS);grid.append(fD);
   const dtD=el('div',{className:'field'});dtD.innerHTML='<label>Data *</label>';const dtI=el('input',{type:'date',id:'ad-data',value:fd.data||today,style:'background:var(--input);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:13px;width:100%;outline:none;'});dtD.append(dtI);grid.append(dtD);
   const vD=el('div',{className:'field'});vD.innerHTML='<label>Valor (R$) *</label>';const vI=el('input',{type:'number',id:'ad-valor',value:fd.valor||'',placeholder:'0,00',style:'background:var(--input);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:13px;width:100%;outline:none;'});vD.append(vI);grid.append(vD);
-  const dD=el('div',{className:'field col-2'});dD.innerHTML='<label>Descrição / Motivo</label>';const dTA=el('textarea',{id:'ad-desc',placeholder:'Ex: Adiantamento solicitado, vale transporte...',style:'background:var(--input);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:13px;width:100%;resize:vertical;min-height:60px;outline:none;'});dTA.textContent=fd.desc||'';dD.append(dTA);grid.append(dD);body.append(grid);
+  const dD=el('div',{className:'field col-2'});dD.innerHTML='<label>Descrição / Motivo</label>';const dTA=el('textarea',{id:'ad-desc',placeholder:'Ex: Adiantamento solicitado, vale transporte...',style:'background:var(--input);border:1px solid var(--border);border-radius:6px;padding:8px 11px;color:var(--text);font-size:13px;width:100%;resize:vertical;min-height:60px;outline:none;'});dTA.textContent=fd.desc||'';dD.append(dTA);
+  const autoD=el('div',{className:'field col-2',style:'background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;'});
+  const autoLbl=el('label',{style:'display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-bottom:6px;'});
+  const autoChk=el('input',{type:'checkbox',id:'ad-auto',checked:true});autoChk.style.cssText='width:15px;height:15px;accent-color:var(--amber);';
+  const autoTxt=el('span',{});autoTxt.textContent='Quitar diárias pendentes automaticamente com este valor';
+  autoLbl.append(autoChk,autoTxt);autoD.append(autoLbl);
+  const preview=el('div',{id:'ad-preview',style:'font-size:12px;color:var(--muted);'});autoD.append(preview);
+  function updPreview(){
+    const fId=document.getElementById('ad-f')?.value;const valor=+document.getElementById('ad-valor')?.value||0;
+    const f=S.funcs.find(x=>x.id===fId);
+    if(!autoChk.checked||!f||!valor||!f.diaria){preview.textContent='';return;}
+    const isPago3=a=>S.pagamentos.some(p=>p.fId===a.fId&&(p.aptIds||[]).includes(a.id));
+    const pendentes=S.apts.filter(a=>a.fId===fId&&!isPago3(a)).sort((a,b)=>a.data.localeCompare(b.data));
+    const qtd=Math.min(pendentes.length,Math.floor(valor/f.diaria));
+    const consumido=qtd*f.diaria;const resto=Math.round((valor-consumido)*100)/100;
+    if(qtd===0){preview.innerHTML='Nenhuma diária pendente será quitada (valor insuficiente ou sem dias pendentes).';return;}
+    preview.innerHTML=qtd+' diária(s) pendente(s) serão marcadas como pagas (total '+fmt$(consumido)+').'+(resto>0?' Restam <b style="color:var(--amber);">'+fmt$(resto)+'</b> em crédito, que ficará em aberto para a próxima diária.':'');
+  }
+  fS.onchange=updPreview;vI.oninput=updPreview;autoChk.onchange=updPreview;
+  grid.append(dD,autoD);body.append(grid);
   const btns=el('div',{style:'display:flex;gap:8px;justify-content:flex-end;margin-top:4px;'});const cn=el('button',{className:'btn btn-ghost'});cn.textContent='Cancelar';cn.onclick=()=>{S.modal=null;S.formData={};render();};const sv=el('button',{className:'btn btn-danger'});sv.textContent='💳 Registrar Adiantamento';
-  sv.onclick=async()=>{const fId=document.getElementById('ad-f')?.value;const data=document.getElementById('ad-data')?.value;const valor=+document.getElementById('ad-valor')?.value||0;const desc=(document.getElementById('ad-desc')?.value||'').trim();if(!fId){toast('Selecione o funcionário!',true);return;}if(valor<=0){toast('Informe um valor válido!',true);return;}sv.disabled=true;sv.textContent='Salvando...';const a={id:nid(),fId,data,valor,desc,regId:S.user.id,quitado:false,created:new Date().toISOString()};await FS.setAdiant(a);S.modal=null;S.formData={};render();toast('Adiantamento registrado!');};
+  sv.onclick=async()=>{
+    const fId=document.getElementById('ad-f')?.value;const data=document.getElementById('ad-data')?.value;const valor=+document.getElementById('ad-valor')?.value||0;const desc=(document.getElementById('ad-desc')?.value||'').trim();const auto=document.getElementById('ad-auto')?.checked;
+    if(!fId){toast('Selecione o funcionário!',true);return;}
+    if(valor<=0){toast('Informe um valor válido!',true);return;}
+    sv.disabled=true;sv.textContent='Salvando...';
+    try{
+      const f=S.funcs.find(x=>x.id===fId);
+      let qtd=0,consumido=0,resto=valor;
+      if(auto&&f&&f.diaria){
+        const isPago3=a=>S.pagamentos.some(p=>p.fId===a.fId&&(p.aptIds||[]).includes(a.id));
+        const pendentes=S.apts.filter(a=>a.fId===fId&&!isPago3(a)).sort((a,b)=>a.data.localeCompare(b.data));
+        qtd=Math.min(pendentes.length,Math.floor(valor/f.diaria));
+        consumido=qtd*f.diaria;resto=Math.round((valor-consumido)*100)/100;
+        if(qtd>0){
+          const toMark=pendentes.slice(0,qtd);
+          const pag={id:nid(),fId,aptIds:toMark.map(a=>a.id),valor:toMark.reduce((s,a)=>s+a.tot,0),data:today,pagoPor:S.user.id,obs:'Quitado automaticamente via adiantamento',created:new Date().toISOString()};
+          await FS.setPagamento(pag);
+        }
+      }
+      if(qtd>0){
+        const aQuitado={id:nid(),fId,data,valor:consumido,desc:(desc?desc+' — ':'')+'Quitou '+qtd+' diária(s)',regId:S.user.id,quitado:true,created:new Date().toISOString()};
+        await FS.setAdiant(aQuitado);
+        if(resto>0){
+          const aResto={id:nid(),fId,data,valor:resto,desc:(desc?desc+' — ':'')+'Crédito remanescente (fração de diária)',regId:S.user.id,quitado:false,created:new Date().toISOString()};
+          await FS.setAdiant(aResto);
+        }
+      }else{
+        const a={id:nid(),fId,data,valor,desc,regId:S.user.id,quitado:false,created:new Date().toISOString()};
+        await FS.setAdiant(a);
+      }
+      S.modal=null;S.formData={};render();toast('Adiantamento registrado!'+(qtd>0?' '+qtd+' diária(s) marcada(s) como paga(s).':''));
+    }catch(e){toast('Erro ao salvar: '+e.message,true);sv.disabled=false;sv.textContent='💳 Registrar Adiantamento';}
+  };
   btns.append(cn,sv);body.append(btns);box.append(mh,body);return box;
 }
 
