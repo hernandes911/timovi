@@ -907,7 +907,7 @@ function buildObras(role){
     }else{const em=el('p',{style:'font-size:12px;color:var(--dim);margin-bottom:10px;font-style:italic;'});em.textContent='Nenhum servico cadastrado ainda.';svSection.append(em);}
     if(role==='master'||role==='encarregado'){const addBtn=el('button',{className:'btn btn-ghost',style:'width:100%;justify-content:center;border:1px dashed var(--border);font-size:12px;margin-bottom:10px;'});addBtn.innerHTML='<span style="font-size:16px;margin-right:6px;color:'+oColor+';">+</span> Adicionar Servico';addBtn.onclick=()=>{S.modal='servico';S.formData={obraId:o.id,_new:true,nome:'',dataInicio:today,status:'pendente'};render();};svSection.append(addBtn);}
     card.append(svSection);
-    if(role==='master'){const ac=el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid var(--border);padding-top:10px;'});const eb=el('button',{className:'btn btn-ghost btn-sm'});eb.textContent='Editar';eb.onclick=()=>{S.modal='obra';S.formData={...o};render();};const tb=el('button',{className:'btn btn-sm '+(o.ativa?'btn-danger':'btn-success')});tb.textContent=o.ativa?'Encerrar':'Reativar';tb.onclick=async()=>{await FS.setObra({...o,ativa:!o.ativa,dataFim:o.ativa?today:null});};const repBtn=el('button',{className:'btn btn-blue btn-sm'});repBtn.textContent='📄 Relatório';repBtn.onclick=()=>{S.modal='obraServicosReport';S.formData={obraId:o.id};render();};const delOb=el('button',{className:'btn btn-ghost btn-sm',style:'color:var(--red);'});delOb.textContent='Excluir';delOb.onclick=async()=>{if(!confirm('Excluir a obra "'+o.nome+'" permanentemente? Os serviços vinculados a ela não serão apagados, mas ficarão órfãos. Essa ação não pode ser desfeita.'))return;await FS.delObra(o.id);toast('Obra excluída.');};ac.append(eb,tb,repBtn,delOb);card.append(ac);}
+    if(role==='master'){const ac=el('div',{style:'display:flex;flex-wrap:wrap;gap:6px;border-top:1px solid var(--border);padding-top:10px;'});const eb=el('button',{className:'btn btn-ghost btn-sm'});eb.textContent='Editar';eb.onclick=()=>{S.modal='obra';S.formData={...o};render();};const tb=el('button',{className:'btn btn-sm '+(o.ativa?'btn-danger':'btn-success')});tb.textContent=o.ativa?'Encerrar':'Reativar';tb.onclick=async()=>{await FS.setObra({...o,ativa:!o.ativa,dataFim:o.ativa?today:null});};const repBtn=el('button',{className:'btn btn-blue btn-sm'});repBtn.textContent='📄 Relatório';repBtn.onclick=()=>{S.modal='obraRelTipo';S.formData={obraId:o.id};render();};const delOb=el('button',{className:'btn btn-ghost btn-sm',style:'color:var(--red);'});delOb.textContent='Excluir';delOb.onclick=async()=>{if(!confirm('Excluir a obra "'+o.nome+'" permanentemente? Os serviços vinculados a ela não serão apagados, mas ficarão órfãos. Essa ação não pode ser desfeita.'))return;await FS.delObra(o.id);toast('Obra excluída.');};ac.append(eb,tb,repBtn,delOb);card.append(ac);}
     grid.append(card);
   });
   if(!obrasVis.length){const e=el('div',{className:'card'});e.innerHTML='<p style="color:var(--dim);text-align:center;padding:30px;">Nenhuma obra.</p>';grid.append(e);}
@@ -2191,12 +2191,31 @@ function buildEditCompanyModal(){
 }
 
 // ===================== MODAIS =====================
+function buildObraRelTipoModal(){
+  const fd=S.formData;const o=S.obras.find(x=>x.id===fd.obraId);
+  const box=el('div',{className:'modal-box',style:'max-width:420px;'});const mh=el('div',{className:'modal-hdr'});const ht=el('span',{className:'hdr',style:'font-size:18px;'});ht.textContent='Tipo de Relatório';const cl=el('button',{className:'modal-close'});cl.textContent='✕';cl.onclick=()=>{S.modal=null;S.formData={};render();};mh.append(ht,cl);
+  const body=el('div',{className:'modal-body'});
+  const sub=el('p',{style:'font-size:13px;color:var(--muted);margin-bottom:14px;'});sub.textContent='Escolha o tipo de documento para '+(o?.nome||'esta obra')+':';
+  body.append(sub);
+  const opts=[['orcamento','📋 Orçamento','Todos os serviços da obra e seus valores'],['realizados','✅ Serviços Realizados','Apenas os serviços já finalizados'],['a_realizar','🔧 Serviços a Realizar','Apenas os serviços em execução (pendentes)']];
+  opts.forEach(([tipo,lbl,desc])=>{
+    const b=el('button',{className:'btn btn-ghost',style:'width:100%;justify-content:flex-start;text-align:left;padding:12px 14px;margin-bottom:8px;flex-direction:column;align-items:flex-start;gap:2px;'});
+    b.innerHTML='<span style="font-size:14px;font-weight:600;color:var(--text);">'+lbl+'</span><span style="font-size:11px;color:var(--muted);">'+desc+'</span>';
+    b.onclick=()=>{S.modal='obraServicosReport';S.formData={obraId:fd.obraId,tipoRel:tipo};render();};
+    body.append(b);
+  });
+  const btns=el('div',{style:'display:flex;justify-content:flex-end;margin-top:6px;'});const cn=el('button',{className:'btn btn-ghost'});cn.textContent='Cancelar';cn.onclick=()=>{S.modal=null;S.formData={};render();};btns.append(cn);body.append(btns);
+  box.append(mh,body);return box;
+}
 function buildObraServicosReportModal(){
   const fd=S.formData;const o=S.obras.find(x=>x.id===fd.obraId);const cli=o?S.clientes.find(c=>c.id===o.clienteId):null;
-  const svsAbertos=o?(S.servicos||[]).filter(sv=>sv.obraId===o.id&&sv.status!=='finalizado'):[];
+  const tipo=fd.tipoRel||'a_realizar';
+  const TIPO_INFO={orcamento:{titulo:'Orçamento',filtro:sv=>true},realizados:{titulo:'Relatório de Serviços Realizados',filtro:sv=>sv.status==='finalizado'},a_realizar:{titulo:'Relatório de Serviços a Realizar',filtro:sv=>sv.status!=='finalizado'}};
+  const tInfo=TIPO_INFO[tipo]||TIPO_INFO.a_realizar;
+  const svsAbertos=o?(S.servicos||[]).filter(sv=>sv.obraId===o.id).filter(tInfo.filtro):[];
   const total=svsAbertos.reduce((s,sv)=>s+(sv.valor||0),0);
   const c=S.company||{};
-  const box=el('div',{className:'modal-box',style:'max-width:680px;'});const mh=el('div',{className:'modal-hdr'});const ht=el('span',{className:'hdr',style:'font-size:18px;'});ht.textContent='📄 Relatório de Serviços em Aberto';const cl=el('button',{className:'modal-close'});cl.textContent='✕';cl.onclick=()=>{S.modal=null;S.formData={};render();};mh.append(ht,cl);
+  const box=el('div',{className:'modal-box',style:'max-width:680px;'});const mh=el('div',{className:'modal-hdr'});const ht=el('span',{className:'hdr',style:'font-size:18px;'});ht.textContent='📄 '+tInfo.titulo;const cl=el('button',{className:'modal-close'});cl.textContent='✕';cl.onclick=()=>{S.modal=null;S.formData={};render();};mh.append(ht,cl);
   const body=el('div',{className:'modal-body'});
   const preview=el('div',{style:'background:#fff;color:#111;border-radius:8px;padding:24px;font-size:13px;'});
   let html='<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #eee;padding-bottom:14px;margin-bottom:14px;">';
@@ -2204,7 +2223,7 @@ function buildObraServicosReportModal(){
   if(c.logo)html+='<img src="'+c.logo+'" style="max-width:180px;max-height:90px;object-fit:contain;">';
   html+='<div><div style="font-weight:700;font-size:15px;">'+(c.nome||'—')+'</div><div style="font-size:11px;color:#666;">'+(c.razaoSocial||'')+'</div></div></div>';
   html+='<div style="text-align:right;font-size:11px;color:#444;">'+(c.cnpj?'CNPJ: '+c.cnpj+'<br>':'')+([c.endereco,c.numero].filter(Boolean).join(', ')+(c.bairro?' - '+c.bairro:'')+(c.cidade?' | '+c.cidade:'')+(c.estado?'/'+c.estado:'')+(c.cep?' - '+c.cep:''))+(c.telCelEmpresa?'<br>Tel: '+c.telCelEmpresa:c.tel?'<br>Tel: '+c.tel:'')+'</div></div>';
-  html+='<h2 style="font-size:16px;margin-bottom:10px;">Relatório de Serviços em Aberto</h2>';
+  html+='<h2 style="font-size:16px;margin-bottom:10px;">'+tInfo.titulo+'</h2>';
   html+='<div style="display:flex;gap:24px;margin-bottom:14px;font-size:13px;"><div><b>Cliente:</b> '+(cli?.nome||'—')+'</div><div><b>Obra:</b> '+(o?.nome||'—')+'</div></div>';
   html+='<table style="width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:14px;"><thead><tr style="background:#f3f3f3;"><th style="text-align:center;padding:8px;border-bottom:1px solid #ddd;">Qtd.</th><th style="text-align:left;padding:8px;border-bottom:1px solid #ddd;">Unidade</th><th style="text-align:left;padding:8px;border-bottom:1px solid #ddd;">Descrição</th><th style="text-align:right;padding:8px;border-bottom:1px solid #ddd;">Valor</th></tr></thead><tbody>';
   if(svsAbertos.length){svsAbertos.forEach(sv=>{html+='<tr><td style="padding:8px;border-bottom:1px solid #eee;text-align:center;">'+(sv.qtd||'—')+'</td><td style="padding:8px;border-bottom:1px solid #eee;">'+(sv.unidade||'un')+'</td><td style="padding:8px;border-bottom:1px solid #eee;color:#666;">'+(sv.desc||sv.nome||'—')+'</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right;">'+fmt$(sv.valor||0)+'</td></tr>';});}
@@ -2217,15 +2236,17 @@ function buildObraServicosReportModal(){
   preview.innerHTML=html;body.append(preview);
   const btns=el('div',{style:'display:flex;gap:8px;justify-content:flex-end;margin-top:14px;'});
   const cn=el('button',{className:'btn btn-ghost'});cn.textContent='Fechar';cn.onclick=()=>{S.modal=null;S.formData={};render();};
-  const pdfB=el('button',{className:'btn btn-amber'});pdfB.textContent='📥 Baixar PDF';pdfB.onclick=()=>exportObraServicosAbertosPDF(o.id);
+  const pdfB=el('button',{className:'btn btn-amber'});pdfB.textContent='📥 Baixar PDF';pdfB.onclick=()=>exportObraServicosAbertosPDF(o.id,tipo);
   btns.append(cn,pdfB);body.append(btns);
   box.append(mh,body);return box;
 }
-function exportObraServicosAbertosPDF(obraId){
+function exportObraServicosAbertosPDF(obraId,tipo){
   loadJsPDF(()=>{
     const{jsPDF}=window.jspdf;const doc=new jsPDF({unit:'mm',format:'a4'});const W=210,mar=15;let y=20;
     const o=S.obras.find(x=>x.id===obraId);const cli=o?S.clientes.find(c=>c.id===o.clienteId):null;
-    const svsAbertos=o?(S.servicos||[]).filter(sv=>sv.obraId===o.id&&sv.status!=='finalizado'):[];
+    const TIPO_INFO={orcamento:{titulo:'Orçamento',filtro:sv=>true},realizados:{titulo:'Relatório de Serviços Realizados',filtro:sv=>sv.status==='finalizado'},a_realizar:{titulo:'Relatório de Serviços a Realizar',filtro:sv=>sv.status!=='finalizado'}};
+    const tInfo=TIPO_INFO[tipo]||TIPO_INFO.a_realizar;
+    const svsAbertos=o?(S.servicos||[]).filter(sv=>sv.obraId===o.id).filter(tInfo.filtro):[];
     const total=svsAbertos.reduce((s,sv)=>s+(sv.valor||0),0);
     const c=S.company||{};
     if(c.logo){try{doc.addImage(c.logo,'PNG',mar,y,55,28,'','FAST');}catch(e){}}
@@ -2238,7 +2259,7 @@ function exportObraServicosAbertosPDF(obraId){
     if(c.telCelEmpresa||c.tel){doc.text('Tel: '+(c.telCelEmpresa||c.tel),W-mar,hy,{align:'right'});hy+=4.5;}
     y=Math.max(y+34,hy+4);
     doc.setDrawColor(220,220,220);doc.line(mar,y,W-mar,y);y+=9;
-    doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(20,20,20);doc.text('Relatório de Serviços em Aberto',mar,y);y+=10;
+    doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(20,20,20);doc.text(tInfo.titulo,mar,y);y+=10;
     doc.setFont('helvetica','normal');doc.setFontSize(10);
     doc.text('Cliente: '+(cli?.nome||'—'),mar,y);doc.text('Obra: '+(o?.nome||'—'),mar+100,y);y+=9;
     doc.setFont('helvetica','bold');doc.setFontSize(8.5);doc.setTextColor(90,90,90);
@@ -2760,6 +2781,7 @@ function buildModal(){
   if(S.modal==='func')ov.append(buildFuncModal());
   if(S.modal==='cliente')ov.append(buildClienteModal());
   if(S.modal==='obra')ov.append(buildObraModal());
+  if(S.modal==='obraRelTipo')ov.append(buildObraRelTipoModal());
   if(S.modal==='obraServicosReport')ov.append(buildObraServicosReportModal());
   if(S.modal==='aptVeiculo')ov.append(buildAptVeiculoModal());
   if(S.modal==='aptFerramenta')ov.append(buildAptFerramentaModal());
